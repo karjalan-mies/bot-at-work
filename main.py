@@ -1,47 +1,64 @@
 import logging
 import os
+import sqlite3
 
-from telegram.ext import (Updater, CommandHandler, MessageHandler,
-                          Filters)
+from telegram.ext import (Updater, CallbackContext, CommandHandler, 
+                          ConversationHandler)
+from telegram.ext.filters import Filters, MessageFilter
+from telegram.ext import MessageHandler, Filters
+from telegram.update import Update
 from telegram import ReplyKeyboardMarkup
 
-print(os.environ['KHL_TOKEN'])
-my_bot = Updater(os.environ['KHL_TOKEN'],
-                 use_context=True)
-dispatcher = my_bot.dispatcher
+from viewing_the_khl_structure import show_division, show_teams
+
+
+conn = sqlite3.connect('khl_base.db', check_same_thread=False)
+cur = conn.cursor()
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO)
 
-
-def start(update, context):
-    main_keyboard = ReplyKeyboardMarkup([['Конф. Запад', 'Конф. Восток'],
-                                         ['КХЛ', 'ЦСКА']])
-    context.bot.send_message(
-        chat_id=update.effective_chat.id, text='Welcome to KHLbot!',
-        reply_markup=main_keyboard)
+updater = Updater(token=os.environ['KHL_TOKEN'],
+use_context=True)
+updater.start_polling()
+dp = updater.dispatcher
 
 
-def echo(update, context):
-    text = 'ECHO: ' + update.message.text
-
+def start(update: Update, context: CallbackContext):
+    my_keyboard = ReplyKeyboardMarkup([['Запад', 'Восток'], ['КХЛ','ЦСКА']])
     context.bot.send_message(chat_id=update.effective_chat.id,
-                             text=text)
+    text="I'm a bot, please talk to me!", reply_markup=my_keyboard)
+
+def show_west_conf(update, context):
+    cur.execute('select value from description where key="west_conf"')
+    text_msg = cur.fetchone()
+    west_keyboard = ReplyKeyboardMarkup(
+        [['Дивизион\nБоброва', 'Дивизион\nТарасова'], ['КХЛ','ЦСКА']])
+    context.bot.send_message(chat_id=update.effective_chat.id, 
+        text=text_msg[0],
+                            reply_markup=west_keyboard)
 
 
-def unknown_command(update, context):
-    context.bot.send_message(chat_id=update.effective_chat.id,
-                             text='Sorry, I didn\'t understand that command.')
+def show_east_conf(update, context):
+    cur.execute('select value from description where key="west_conf"')
+    text_msg = cur.fetchone()
+    west_keyboard = ReplyKeyboardMarkup(
+        [['Дивизион\nХарламова', 'Дивизион\nЧернышева'], ['КХЛ','ЦСКА']])
+    context.bot.send_message(chat_id=update.effective_chat.id, 
+        text=text_msg[0],
+                            reply_markup=west_keyboard)
+
+viewing_conf = ConversationHandler(
+    entry_points=[
+        MessageHandler(Filters.regex('^(Запад)$'), show_division)
+    ],
+    states={'division': []},
+    fallbacks=[]
+)
 
 
-start_handler = CommandHandler('start', start)
-echo_handler = MessageHandler(Filters.text & (~Filters.command), echo)
-unknown_command_handler = MessageHandler(Filters.command, unknown_command)
-
-dispatcher.add_handler(start_handler)
-dispatcher.add_handler(unknown_command_handler)
-dispatcher.add_handler(echo_handler)
-
-my_bot.start_polling()
-my_bot.idle()
+dp.add_handler(CommandHandler('start', start))
+# dp.add_handler(MessageHandler(Filters.regex('^(Запад)$'), show_west_conf))
+dp.add_handler(MessageHandler(Filters.regex('^(Восток)$'), show_east_conf))
+dp.add_handler(viewing_conf)
